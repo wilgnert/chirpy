@@ -7,24 +7,35 @@ package database
 
 import (
 	"context"
+	"database/sql"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, created_at, updated_at, email)
+INSERT INTO users (id, created_at, updated_at, email, hashed_password)
 VALUES (
-    gen_random_uuid(), NOW(), NOW(), $1
+    gen_random_uuid(), NOW(), NOW(), $1, $2
 )
-RETURNING id, created_at, updated_at, email
+RETURNING id, created_at, updated_at, email, hashed_password, chirpy_red_expires_at
 `
 
-func (q *Queries) CreateUser(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser, email)
+type CreateUserParams struct {
+	Email          string `json:"email"`
+	HashedPassword string `json:"hashed_password"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createUser, arg.Email, arg.HashedPassword)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Email,
+		&i.HashedPassword,
+		&i.ChirpyRedExpiresAt,
 	)
 	return i, err
 }
@@ -36,4 +47,89 @@ DELETE FROM users WHERE 1 = 1
 func (q *Queries) DeleteAllUsers(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteAllUsers)
 	return err
+}
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+select id, created_at, updated_at, email, hashed_password, chirpy_red_expires_at from users where email = $1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.HashedPassword,
+		&i.ChirpyRedExpiresAt,
+	)
+	return i, err
+}
+
+const updateUserChirpyRed = `-- name: UpdateUserChirpyRed :one
+update users
+set updated_at=NOW(), chirpy_red_expires_at=$2
+where id = $1
+RETURNING id, created_at, updated_at, email, chirpy_red_expires_at
+`
+
+type UpdateUserChirpyRedParams struct {
+	ID                 uuid.UUID    `json:"id"`
+	ChirpyRedExpiresAt sql.NullTime `json:"chirpy_red_expires_at"`
+}
+
+type UpdateUserChirpyRedRow struct {
+	ID                 uuid.UUID    `json:"id"`
+	CreatedAt          time.Time    `json:"created_at"`
+	UpdatedAt          time.Time    `json:"updated_at"`
+	Email              string       `json:"email"`
+	ChirpyRedExpiresAt sql.NullTime `json:"chirpy_red_expires_at"`
+}
+
+func (q *Queries) UpdateUserChirpyRed(ctx context.Context, arg UpdateUserChirpyRedParams) (UpdateUserChirpyRedRow, error) {
+	row := q.db.QueryRowContext(ctx, updateUserChirpyRed, arg.ID, arg.ChirpyRedExpiresAt)
+	var i UpdateUserChirpyRedRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.ChirpyRedExpiresAt,
+	)
+	return i, err
+}
+
+const updateUserEmailAndPassword = `-- name: UpdateUserEmailAndPassword :one
+UPDATE users 
+set email = $2, hashed_password = $3, updated_at = NOW()
+where id = $1
+RETURNING id, created_at, updated_at, email, chirpy_red_expires_at
+`
+
+type UpdateUserEmailAndPasswordParams struct {
+	ID             uuid.UUID `json:"id"`
+	Email          string    `json:"email"`
+	HashedPassword string    `json:"hashed_password"`
+}
+
+type UpdateUserEmailAndPasswordRow struct {
+	ID                 uuid.UUID    `json:"id"`
+	CreatedAt          time.Time    `json:"created_at"`
+	UpdatedAt          time.Time    `json:"updated_at"`
+	Email              string       `json:"email"`
+	ChirpyRedExpiresAt sql.NullTime `json:"chirpy_red_expires_at"`
+}
+
+func (q *Queries) UpdateUserEmailAndPassword(ctx context.Context, arg UpdateUserEmailAndPasswordParams) (UpdateUserEmailAndPasswordRow, error) {
+	row := q.db.QueryRowContext(ctx, updateUserEmailAndPassword, arg.ID, arg.Email, arg.HashedPassword)
+	var i UpdateUserEmailAndPasswordRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.ChirpyRedExpiresAt,
+	)
+	return i, err
 }
